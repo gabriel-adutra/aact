@@ -284,6 +284,7 @@ docker compose run --rm etl python src/main.py
 - Cobertura de rota/dosagem tende a ser baixa porque as descrições de intervenção raramente trazem texto rico. Optamos por regras simples e declarativas (text_rules.yaml) e preferimos `Unknown` a falsos positivos.
 - Não usamos LLM/NER pesado: o desafio pede abordagem “razoável” e documentada; priorizamos imagem leve, execução offline e transparência. Futuro: NER/LLM (BioBERT/SciSpacy) ou heurística secundária no nome da droga para hints de forma/rota.
 - `.title()` simplifica acrônimos (dnaJ → Dnaj); aceitamos essa limitação para reduzir variações triviais. Futuro: lista de exceções/sinônimos para acrônimos conhecidos.
+- Ao iniciar, o Neo4j pode avisar que constraints/índices já existem; é esperado e demonstra a idempotência da criação de schema (`IF NOT EXISTS`).
 
 ## Próximos Passos (se houvesse mais tempo)
 - Usar NER/LLM (ex.: BioBERT/SciSpacy) para melhorar inferência de rota/dosagem.
