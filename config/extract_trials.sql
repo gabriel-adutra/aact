@@ -6,7 +6,7 @@ SELECT
     -- Agrupamos as intervenções (drogas) em uma lista JSON
     COALESCE(
         json_agg(DISTINCT jsonb_build_object('name', i.name, 'description', i.description)) 
-        FILTER (WHERE i.intervention_type = 'Drug' AND i.name IS NOT NULL), 
+        FILTER (WHERE i.intervention_type IN ('DRUG', 'BIOLOGICAL') AND i.name IS NOT NULL), 
         '[]'
     ) as drugs,
     -- Agrupamos condições
