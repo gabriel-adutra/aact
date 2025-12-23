@@ -286,6 +286,11 @@ docker compose run --rm etl python src/main.py
 - `.title()` simplifica acrônimos (dnaJ → Dnaj); aceitamos essa limitação para reduzir variações triviais. Futuro: lista de exceções/sinônimos para acrônimos conhecidos.
 - Ao iniciar, o Neo4j pode avisar que constraints/índices já existem; é esperado e demonstra a idempotência da criação de schema (`IF NOT EXISTS`).
 
+### Trade-offs de Inferência (rota/forma)
+- AI Query / Databricks end-to-end: maior cobertura potencial e facilidades gerenciadas; porém depende de cloud, tem custo/latência e foge da leveza/reprodutibilidade local.
+- Modelos locais (BioBERT/SciSpacy): melhor recall que regras; mas aumentam a imagem (GB), o tempo de build e a complexidade operacional.
+- Abordagem atual (rule-based): leve, offline, transparente e fácil de auditar; menor recall, mas alinhada ao “reasonable approach” do desafio e mantendo a imagem enxuta.
+
 ## Próximos Passos (se houvesse mais tempo)
 - Usar NER/LLM (ex.: BioBERT/SciSpacy) para melhorar inferência de rota/dosagem.
 - Enriquecer normalização de nomes (tabelas de sinônimos, remoção de sufixos “Tablet”, “Injection” do nome sem afetar identidade).
