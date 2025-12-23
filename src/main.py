@@ -17,43 +17,40 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 def run_pipeline(limit=1000, batch_size=500):
-    """
-    Orchestrates Extract -> Transform -> Load into Neo4j.
-    """
+
     logger.info("Starting ETL Pipeline (AACT -> Neo4j)...")
     
     aact_client = AACTClient()
-    cleaner = DataCleaner()
-    neo_client = Neo4jClient()
+    data_cleaner = DataCleaner()
+    neo4j_client = Neo4jClient()
 
     # Ensure schema/constraints exist
-    neo_client.setup_schema()
+    neo4j_client.ensure_schema()
 
     try:
-        raw_trials = aact_client.fetch_trials()
+        trials_stream = aact_client.fetch_trials()
 
         batch = []
         processed = 0
 
-        for raw_trial in raw_trials:
+        for raw_trial in trials_stream:
             processed += 1
             if processed > limit:
                 break
 
-            clean_trial = cleaner.clean_study(raw_trial)
+            clean_trial = data_cleaner.clean_study(raw_trial)
             batch.append(clean_trial)
 
             if processed % 100 == 0:
                 logger.info(f"Processed {processed} records...")
 
-            # Flush batch to Neo4j
             if len(batch) >= batch_size:
-                neo_client.load_batch(batch)
+                neo4j_client.load_trials_batch(batch)
                 batch = []
 
         # Load remaining
         if batch:
-            neo_client.load_batch(batch)
+            neo4j_client.load_trials_batch(batch)
 
         logger.info(f"Pipeline completed successfully. Total processed: {processed}")
 
@@ -61,7 +58,7 @@ def run_pipeline(limit=1000, batch_size=500):
         logger.error(f"Pipeline failed: {e}")
         sys.exit(1)
     finally:
-        neo_client.close()
+        neo4j_client.close_connection()
 
 if __name__ == "__main__":
     # Optional: suppress overly verbose logs from submodules if needed

@@ -20,15 +20,13 @@ class Neo4jClient:
             logger.error(f"Failed to connect to Neo4j: {e}")
             raise
 
-    def close(self):
+
+    def close_connection(self):
         if self.driver:
             self.driver.close()
 
-    def setup_schema(self):
-        """
-        Creates constraints and indexes to ensure data integrity and performance.
-        Idempotent operations (IF NOT EXISTS).
-        """
+
+    def ensure_schema(self): 
         queries = [
             # Constraints (Uniqueness)
             "CREATE CONSTRAINT trial_nct_id IF NOT EXISTS FOR (t:Trial) REQUIRE t.nct_id IS UNIQUE",
@@ -48,11 +46,9 @@ class Neo4jClient:
                     logger.info(f"Schema applied: {q}")
                 except Exception as e:
                     logger.warning(f"Schema query failed (might already exist): {e}")
+                    
 
-    def load_batch(self, batch: List[Dict[str, Any]]):
-        """
-        Ingests a batch of cleaned trials using UNWIND for performance.
-        """
+    def load_trials_batch(self, batch: List[Dict[str, Any]]):
         if not batch:
             return
 
