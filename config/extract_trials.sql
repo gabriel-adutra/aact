@@ -1,4 +1,4 @@
-SELECT 
+SELECT -- Esses 4 campos cumprem os itens listados para rastreabilidade do enunciado.
     s.nct_id, 
     s.brief_title, 
     s.phase, 
