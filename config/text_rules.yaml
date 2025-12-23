@@ -1,0 +1,51 @@
+# Rules for inferring metadata from unstructured text
+# Format: category: { output_value: [list_of_synonyms] }
+
+routes:
+  Oral:
+    - oral
+    - by mouth
+    - po
+    - tablet
+    - capsule
+    - pill
+    - swallow
+  Intravenous:
+    - intravenous
+    - iv
+    - infusion
+    - drip
+    - injection into vein
+  Subcutaneous:
+    - subcutaneous
+    - sc
+    - injection under skin
+  Topical:
+    - topical
+    - cream
+    - ointment
+    - gel
+    - skin application
+  Inhalation:
+    - inhalation
+    - inhaler
+    - nebulizer
+
+dosage_forms:
+  Tablet:
+    - tablet
+    - pill
+    - caplet
+  Capsule:
+    - capsule
+    - softgel
+  Injection:
+    - injection
+    - syringe
+    - vial
+    - ampoule
+  Cream:
+    - cream
+    - ointment
+    - gel
+
