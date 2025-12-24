@@ -5,7 +5,7 @@ import unittest
 # Ensure src is on path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from src.processing.data_cleaner import DataCleaner
+from src.transform.data_cleaner import DataCleaner
 
 
 class TestDataCleaner(unittest.TestCase):

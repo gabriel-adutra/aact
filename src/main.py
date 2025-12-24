@@ -5,9 +5,9 @@ import os
 # Ensure src is in path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from src.db.aact_client import AACTClient
-from src.db.neo4j_client import Neo4jClient
-from src.processing.data_cleaner import DataCleaner
+from src.extract.aact_client import AACTClient
+from src.load.neo4j_client import Neo4jClient
+from src.transform.data_cleaner import DataCleaner
 
 # Configure logging
 logging.basicConfig(
@@ -32,8 +32,8 @@ def run_pipeline(limit=1000, batch_size=500):
     try:
         logger.info("Extracting trials from AACT (streaming)...")
         trials_stream = aact_client.fetch_trials() #just creates a generator of dictionaries
-        logger.info(f"Transforming and batching trials (batch_size={batch_size}, limit={limit})...")
 
+        logger.info(f"Transforming and batching trials (batch_size={batch_size}, limit={limit})...")
         for clean_batch in transform_batches(trials_stream, data_cleaner, batch_size, limit):
             if clean_batch:
                 neo4j_client.load_trials_batch(clean_batch)

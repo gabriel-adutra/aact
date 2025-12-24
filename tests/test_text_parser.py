@@ -5,7 +5,7 @@ import unittest
 # Ensure src is on path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from src.processing.text_parser import TextParser
+from src.transform.text_parser import TextParser
 
 
 class TestTextParser(unittest.TestCase):
