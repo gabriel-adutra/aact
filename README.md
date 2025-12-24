@@ -14,13 +14,13 @@ Este repositório implementa um pipeline ETL completo, idempotente e conteineriz
 A arquitetura do pipeline foi desenhada para refletir separação de responsabilidades, configurabilidade e idempotência, alinhada ao que o desafio valoriza (“pipeline bem arquitetado”, “config-driven”, “batching/backpressure”, “idempotent loads”). Essa organização segue a diretriz de “estrutura clara”: cada módulo tem uma única missão (ler, processar, carregar, orquestrar), e as regras/queries ficam em config para facilitar ajustes sem tocar código.
 
 
-### Módulos principais
-- `config/extract_trials.sql` — Query única e declarativa de extração (AACT → JSON agregado por estudo).
+### Módulos principais (organizados em extract/transform/load)
+- `config/extract_trials.sql` — Query declarativa de extração (AACT → JSON agregado por estudo).
 - `config/text_rules.yaml` — Regras declarativas de inferência (rota/dosagem) baseadas em palavras‑chave.
-- `src/db/aact_client.py` — Adapter de leitura AACT (PostgreSQL), streaming em batches.
-- `src/processing/data_cleaner.py` — Normalização de campos e chamada do parser de texto.
-- `src/processing/text_parser.py` — Inferência rule‑based de rota/dosagem a partir de texto livre.
-- `src/db/neo4j_client.py` — Adapter de escrita Neo4j (constraints, índices, carga em lote via UNWIND).
+- `src/extract/aact_client.py` — Adapter de leitura AACT (PostgreSQL), streaming em batches.
+- `src/transform/data_cleaner.py` — Normalização de campos e orquestração da limpeza.
+- `src/transform/text_parser.py` — Inferência rule‑based de rota/dosagem a partir de texto livre.
+- `src/load/neo4j_client.py` — Adapter de escrita Neo4j (constraints, índices, carga em lote via UNWIND).
 - `src/main.py` — Orquestrador do pipeline (Extract → Transform → Load) com batch e limite configuráveis.
 - `queries.cypher` — Consultas de demonstração para validação rápida no Neo4j.
 
