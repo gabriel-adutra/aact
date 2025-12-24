@@ -9,6 +9,7 @@ Este repositório implementa um pipeline ETL completo, idempotente e conteineriz
 - Patrocinadores/Organizações (Organization)
 - Via de administração e forma farmacêutica (como propriedades na relação Trial–Drug)
 
+
 ## Arquitetura (Separação de Responsabilidades)
 A arquitetura do pipeline foi desenhada para refletir separação de responsabilidades, configurabilidade e idempotência, alinhada ao que o desafio valoriza (“pipeline bem arquitetado”, “config-driven”, “batching/backpressure”, “idempotent loads”). Essa organização segue a diretriz de “estrutura clara”: cada módulo tem uma única missão (ler, processar, carregar, orquestrar), e as regras/queries ficam em config para facilitar ajustes sem tocar código.
 
@@ -22,6 +23,7 @@ A arquitetura do pipeline foi desenhada para refletir separação de responsabil
 - `src/db/neo4j_client.py` — Adapter de escrita Neo4j (constraints, índices, carga em lote via UNWIND).
 - `src/main.py` — Orquestrador do pipeline (Extract → Transform → Load) com batch e limite configuráveis.
 - `queries.cypher` — Consultas de demonstração para validação rápida no Neo4j.
+
 
 ### Características do Sistema
 - **Batch & Idempotente:** MERGE em todas as entidades; repetir o ETL não duplica dados.
@@ -46,7 +48,7 @@ A arquitetura do pipeline foi desenhada para refletir separação de responsabil
 
 3) **Inferência de rota/dosagem por palavras‑chave (regras)**
    - Alternativas: LLM/NER (maior recall, custo/peso maiores) ou heurísticas simples. Inclui opções gerenciadas como Databricks AI Query, que facilitam mas dependem de cloud, custo e latência.
-   - Escolha: regras no `config/text_rules.yaml`, porque são leves, auditáveis e reprodutíveis em ambiente Docker enxuto; aderem ao espírito do desafio (não construir um “Google Healthcare”, mas uma abordagem razoável e documentada).
+   - Escolha: regras no `config/text_rules.yaml`, porque são leves, auditáveis e reprodutíveis em ambiente Docker enxuto. Aderem ao espírito do desafio (não construir uma ontologia farmacêutica “perfeita”, mas uma abordagem razoável e documentada).
    - Limitação: descrições pobres geram `Unknown` (~5% rota, ~1% forma em 1000 trials). Documentado como risco conhecido. Futuro: NER/LLM (BioBERT/SciSpacy), AI Query gerenciado (ex.: Databricks) ou hints no nome da droga, se aceitarmos custo/complexidade adicionais.
 
 4) **Intervention types: DRUG e BIOLOGICAL**
@@ -62,30 +64,26 @@ A arquitetura do pipeline foi desenhada para refletir separação de responsabil
    - Alternativas: pipelines de normalização avançados (sinônimos, stemming) ou manter bruto.
    - Escolha: `.title()` para reduzir variação trivial com custo baixo. Risco: acrônimos podem ser alterados (dnaJ → Dnaj); limitação registrada. Futuro: lista de exceções/sinônimos se necessário.
 
-## Como o Sistema Funciona
 
-1) **Ingestão (AACT → Python)**  
-   - `config/extract_trials.sql` filtra estudos intervencionais em fases PHASE1/2/3/4 (inclui PHASE1/PHASE2, PHASE2/PHASE3) e `intervention_type IN ('DRUG','BIOLOGICAL')`.  
-   - Agrega drogas, condições e patrocinadores por estudo (`json_agg`).
+## Como o Sistema Funciona (atendendo aos requisitos funcionais)
 
-2) **Transformação (Python)**  
-   - `DataCleaner` normaliza textos (trim, Title Case básico) e deduplica condições.  
-   - `TextParser` aplica regras de rota/dosagem sobre a descrição da intervenção; se vazio, retorna `Unknown`.
+1) **Ingestão (query reproduzível, dataset não trivial, estágio clínico)**  
+   - Query versionada em `config/extract_trials.sql`: estudos intervencionais em PHASE1/2/3/4 (inclui PHASE1/PHASE2, PHASE2/PHASE3) e `intervention_type IN ('DRUG','BIOLOGICAL')` (nossa definição de “clinical-stage”).  
+   - Retorna agregado por estudo (`json_agg`) e, por padrão, processa 1000 trials (≥ 500 exigido). Sem binários/dumps: sempre dados atuais do AACT público.
 
-3) **Carga (Neo4j)**  
-   - Constraints/Índices criados automaticamente (nct_id, nome de Drug/Condition/Organization).  
-   - Carga em lote com `UNWIND $batch` e propriedades de rota/dosagem na relação `STUDIED_IN`.
+2) **Transformação (campos mínimos, normalização, faltantes/duplicatas)**  
+   - Captura: Drug (lista de intervenções), Condition, Organization (sponsor/collaborators), NCT ID, Title, Phase, Status; rota/forma se houver texto.  
+   - Normaliza textos (trim/Title Case) e deduplica condições; campos ausentes viram `Unknown` em rota/forma em vez de gerar erro; mantém placebo para fidelidade.
 
-4) **Validação (Queries)**  
-   - `queries.cypher` contém consultas para top drugs, visão por empresa, visão por condição e cobertura de rota/dosagem.
+3) **Modelagem e Carga (grafo, rota/forma contextual, idempotência) - Neo4J**  
+   - Nós: Trial, Drug, Condition, Organization.  
+   - Relações: `STUDIED_IN` (com `route`, `dosage_form`), `SPONSORED_BY`, `STUDIES_CONDITION`. Rota/forma ficam na relação (trial-specific), conforme o enunciado permite.  
+   - Schema garantido no start: constraints de unicidade em nct_id e nomes; índices em phase/status. Carga em lote com `UNWIND + MERGE` (idempotente, sem passos manuais).
 
-## Modelagem de Dados (Grafo)
-- Nós: `(:Trial {nct_id, title, phase, status})`, `(:Drug {name})`, `(:Condition {name})`, `(:Organization {name})`
-- Relações:
-  - `(:Drug)-[:STUDIED_IN {route?, dosage_form?}]->(:Trial)`
-  - `(:Trial)-[:STUDIES_CONDITION]->(:Condition)`
-  - `(:Trial)-[:SPONSORED_BY {class?}]->(:Organization)`
-- Constraints/Índices: unicidade em nct_id e nomes; índices em phase/status.
+4) **Validação (queries obrigatórias)**  
+   - `queries.cypher` traz: top drugs; por empresa (drugs/conditions); por condição (drugs/fases); cobertura de rota/dosagem.
+
+
 
 ## Pré-requisitos
 - Docker + Docker Compose.
@@ -166,20 +164,7 @@ docker compose run --rm etl python src/main.py
 - Heurística no nome da droga para extrair forma/rota sem alterar o identificador.
 - Métricas automáticas (nós/arestas criados, coverage de campos).
 - Ingestão incremental e orquestração (Airflow/Prefect).
-# ClinicalTrials.gov → Neo4j (AACT ETL)
 
-## Visão Geral
-Pipeline em Python que:
-1. Extrai estudos clínicos do AACT (Postgres público do ClinicalTrials.gov).
-2. Transforma e enriquece (limpeza + inferência de rota/dosagem a partir de texto).
-3. Carrega em lote no Neo4j, com constraints/indexes para idempotência e performance.
-4. Inclui queries Cypher de demonstração.
-
-## Arquitetura
-- **Fonte:** AACT (PostgreSQL público). Consulta parametrizada em `config/extract_trials.sql`.
-- **Processamento:** Python (rule-based NLP leve), arquivos de regras em `config/text_rules.yaml`.
-- **Alvo:** Neo4j (grafo), carga em lote via `UNWIND`.
-- **Conteinerização:** `docker-compose` com serviços `neo4j` e `etl`.
 
 ## Decisões e Trade-offs
 - **AACT direto (Postgres público)** em vez de dump local de 2GB: zero dependência de arquivo gigante e experiência “clone & run”.
@@ -223,70 +208,6 @@ Arquivo: `config/text_rules.yaml`
   - `Organization.name` UNIQUE
   - Indexes em `Trial.phase`, `Trial.status`
 
-## Pré-requisitos
-- Docker + Docker Compose.
-- Conta no AACT para obter usuário/senha do Postgres (https://aact.ctti-clinicaltrials.org/). Exemplo de `.env`:
-  ```
-  AACT_HOST=aact-db.ctti-clinicaltrials.org
-  AACT_PORT=5432
-  AACT_DB=aact
-  AACT_USER=SEU_USUARIO
-  AACT_PASSWORD=SUASENHA
-
-  NEO4J_URI=bolt://neo4j:7687
-  NEO4J_USER=neo4j
-  NEO4J_PASSWORD=password
-  ```
-
-## Como Rodar
-1) Build:
-```
-docker compose build etl
-```
-2) Executar ETL (default 1000 estudos em lotes de 500):
-```
-docker compose run --rm etl python src/main.py
-```
-3) Acessar Neo4j Browser:
-- URL: http://localhost:7474
-- Usuário: `neo4j`
-- Senha: `password` (ou altere no `.env` / docker-compose).
-4) Rodar queries de exemplo (também em `queries.cypher`):
-- Top drugs:
-```
-MATCH (d:Drug)<-[:STUDIED_IN]-(t:Trial)
-RETURN d.name AS drug, count(t) AS trials
-ORDER BY trials DESC
-LIMIT 10;
-```
-- Por empresa (ex: Novartis):
-```
-MATCH (o:Organization {name: "Novartis"})<-[:SPONSORED_BY]-(t:Trial)
-OPTIONAL MATCH (t)-[:STUDIED_IN]->(d:Drug)
-OPTIONAL MATCH (t)-[:STUDIES_CONDITION]->(c:Condition)
-RETURN o.name, collect(DISTINCT d.name) AS drugs, collect(DISTINCT c.name) AS conditions;
-```
-- Por condição (ex: Alzheimer Disease):
-```
-MATCH (c:Condition {name: "Alzheimer Disease"})<-[:STUDIES_CONDITION]-(t:Trial)-[:STUDIED_IN]->(d:Drug)
-RETURN d.name AS drug, collect(DISTINCT t.phase) AS phases, count(DISTINCT t) AS trial_count
-ORDER BY trial_count DESC;
-```
-- Cobertura de rota/dosagem:
-```
-MATCH ()-[r:STUDIED_IN]->()
-RETURN
-  count(r) AS total_relationships,
-  SUM(CASE WHEN r.route IS NOT NULL AND r.route <> "Unknown" THEN 1 ELSE 0 END) AS with_route,
-  SUM(CASE WHEN r.dosage_form IS NOT NULL AND r.dosage_form <> "Unknown" THEN 1 ELSE 0 END) AS with_dosage_form;
-```
-
-## Ajustes de Volume
-- Para carregar mais de 1000 estudos, edite `run_pipeline(limit=..., batch_size=...)` em `src/main.py` e rode novamente:
-```
-docker compose run --rm etl python src/main.py
-```
-- Carga é idempotente (MERGE evita duplicatas).
 
 ## Limitações Conhecidas
 - Inferência limitada por falta de texto rico: muitos `Unknown` para rota/dosagem.
@@ -304,18 +225,23 @@ docker compose run --rm etl python src/main.py
 ## Exemplos de Saída (queries no Neo4j)
 - Top drugs (1000 trials):
   - Zidovudine 122, Didanosine 54, Buprenorphine 42, Lamivudine 34, Stavudine 32, Zalcitabine 20, Indinavir Sulfate 20, Nevirapine 19, Rgp120/Hiv-1 Sf-2 18, Ritonavir 18.
+
 - Por empresa (Novartis):
   - Drugs: Rivastigmine; Conditions: Alzheimer Disease, Cognition Disorders.
+
 - Por condição (Alzheimer Disease):
   - Drogas (todas PHASE3, trial_count mostrado): Estrogen (2), Galantamine (1), Donepezil (1), Vitamin E (1), Trazodone (1), Haloperidol (1), Rivastigmine (1), Prednisone (1), Estrogen And Progesterone (1), Melatonin (1).
+
 - Cobertura rota/dosagem (1000 trials → 1.645 relações Trial–Drug):
   - with_route: 79 (~5%); with_dosage_form: 21 (~1%). Baixa cobertura devido a descrições pobres; documentado como limitação da abordagem rule-based.
+
 
 ## Próximos Passos (se houvesse mais tempo)
 - Usar NER/LLM (ex.: BioBERT/SciSpacy) para melhorar inferência de rota/dosagem.
 - Enriquecer normalização de nomes (tabelas de sinônimos, remoção de sufixos “Tablet”, “Injection” do nome sem afetar identidade).
 - Métricas automáticas (quantos nós/arestas criados, coverage de campos).
 - Incremental ingestion (delta) e workflow (Airflow/Prefect).
+
 
 ### Trade-offs de Inferência (rota/forma)
 - AI Query / Databricks end-to-end: maior cobertura potencial e facilidades gerenciadas; porém depende de cloud, tem custo/latência e foge da leveza/reprodutibilidade local.
