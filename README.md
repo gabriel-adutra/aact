@@ -197,13 +197,19 @@ RETURN
   SUM(CASE WHEN r.route IS NOT NULL AND r.route <> "Unknown" THEN 1 ELSE 0 END) AS with_route,
   SUM(CASE WHEN r.dosage_form IS NOT NULL AND r.dosage_form <> "Unknown" THEN 1 ELSE 0 END) AS with_dosage_form;
 ```
-
 ## Ajustes de Volume
 - Editar `run_pipeline(limit=..., batch_size=...)` em `src/main.py` e rodar novamente:
 ```
 docker compose run --rm etl python src/main.py
 ```
 - Carga é idempotente (MERGE evita duplicatas).
+- Aviso: ao reexecutar, o Neo4j pode avisar que constraints/índices já existem; é esperado (uso de `IF NOT EXISTS`).
+
+
+## Testes e Qualidade
+- Testes unitários validam parser e limpeza (`tests/test_text_parser.py`, `tests/test_data_cleaner.py`). Rodar com: `docker compose run --rm etl python -m unittest discover tests`
+- Filosofia: preferimos precisão a falsos positivos; `Unknown` é usado quando não há evidência suficiente.
+- Logs do pipeline mostram batches carregados e progresso, úteis para monitorar execução.
 
 
 ## Limitações Conhecidas
@@ -226,13 +232,11 @@ docker compose run --rm etl python src/main.py
 - **Placebo como droga:** Mantido conforme fonte; decisão de negócio poderia filtrar, mas preservamos fidelidade aos dados.
 - **Normalização de nomes:** `.title()` pode simplificar acrônimos (ex: dnaJ → Dnaj). Documentado como limitação aceitável.
 
-
 ## Exemplos de Saída (queries no Neo4j)
 - Top drugs (1000 trials): Zidovudine 122, Didanosine 54, Buprenorphine 42, Lamivudine 34, Stavudine 32, Zalcitabine 20, Indinavir Sulfate 20, Nevirapine 19, Rgp120/Hiv-1 Sf-2 18, Ritonavir 18.
 - Por empresa (Novartis): Drugs: Rivastigmine; Conditions: Alzheimer Disease, Cognition Disorders.
 - Por condição (Alzheimer Disease): drogas PHASE3 com maior contagem incluem Estrogen (2), Galantamine (1), Donepezil (1), Vitamin E (1), Trazodone (1), Haloperidol (1), Rivastigmine (1), Prednisone (1), Estrogen And Progesterone (1), Melatonin (1).
 - Cobertura rota/dosagem (1000 trials → 1.645 relações Trial–Drug): with_route 79 (~5%); with_dosage_form 21 (~1%). Baixa cobertura devido a descrições pobres; documentado como limitação da abordagem rule-based.
-
 
 ## Próximos Passos (se houvesse mais tempo)
 - NER/LLM (BioBERT/SciSpacy) para melhorar rota/dosagem.
