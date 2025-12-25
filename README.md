@@ -9,10 +9,31 @@ Este repositório implementa um pipeline ETL completo, idempotente e conteineriz
 - Patrocinadores/Organizações (Organization)
 - Via de administração e forma farmacêutica (como propriedades na relação Trial–Drug)
 
-
 ## Arquitetura (Separação de Responsabilidades)
 A arquitetura do pipeline foi desenhada para refletir separação de responsabilidades, configurabilidade e idempotência, alinhada ao que o desafio valoriza (“pipeline bem arquitetado”, “config-driven”, “batching/backpressure”, “idempotent loads”). Essa organização segue a diretriz de “estrutura clara”: cada módulo tem uma única missão (ler, processar, carregar, orquestrar), e as regras/queries ficam em config para facilitar ajustes sem tocar código.
 
+## Diagrama (Visão Geral)
+```mermaid
+graph TD
+    subgraph External_Data
+        AACT[(AACT Public Postgres)]
+    end
+
+    subgraph ETL_Container [Docker: Python ETL]
+        E[Extract: SQL Declarativo] --> T[Transform: Data Cleaning & Rule-based NLP]
+        T --> L[Load: Neo4j Client / UNWIND Batches]
+
+        Config{Config & Rules} -.-> E
+        Config -.-> T
+    end
+
+    subgraph Graph_Storage
+        Neo[(Neo4j Graph Database)]
+    end
+
+    AACT -->|Stream JSON Aggregated| E
+    L -->|Cypher MERGE| Neo
+```
 
 ### Módulos principais (organizados em extract/transform/load)
 - `config/extract_trials.sql` — Query declarativa de extração (AACT → JSON agregado por estudo).
@@ -24,12 +45,30 @@ A arquitetura do pipeline foi desenhada para refletir separação de responsabil
 - `src/main.py` — Orquestrador do pipeline (Extract → Transform → Load) com batch e limite configuráveis.
 - `queries.cypher` — Consultas de demonstração para validação rápida no Neo4j.
 
-
 ### Características do Sistema
 - **Batch & Idempotente:** MERGE em todas as entidades; repetir o ETL não duplica dados.
 - **Config‑driven:** SQL, regras de texto e variáveis sensíveis em arquivos dedicados (`.env`).
 - **Leve & Reprodutível:** Rule‑based NLP em vez de LLM/NER pesado. Imagem Docker enxuta.
 - **Resiliente:** Constraints e índices aplicados automaticamente. Logs claros de progresso.
+
+
+## Como o Sistema Funciona (atendendo aos requisitos funcionais)
+
+1) **Ingestão (query reproduzível, dataset não trivial, estágio clínico)**  
+   - Query versionada em `config/extract_trials.sql`: estudos intervencionais em PHASE1/2/3/4 (inclui PHASE1/PHASE2, PHASE2/PHASE3) e `intervention_type IN ('DRUG','BIOLOGICAL')` (nossa definição de “clinical-stage”).  
+   - Retorna agregado por estudo (`json_agg`) e, por padrão, processa 1000 trials (≥ 500 exigido). Sem binários/dumps: sempre dados atuais do AACT público.
+
+2) **Transformação (campos mínimos, normalização, faltantes/duplicatas)**  
+   - Captura: Drug (lista de intervenções), Condition, Organization (sponsor/collaborators), NCT ID, Title, Phase, Status; rota/forma se houver texto.  
+   - Normaliza textos (trim/Title Case) e deduplica condições; campos ausentes viram `Unknown` em rota/forma em vez de gerar erro; mantém placebo para fidelidade.
+
+3) **Modelagem e Carga (grafo, rota/forma contextual, idempotência) - Neo4J**  
+   - Nós: Trial, Drug, Condition, Organization.  
+   - Relações: `STUDIED_IN` (com `route`, `dosage_form`), `SPONSORED_BY`, `STUDIES_CONDITION`. Rota/forma ficam na relação (trial-specific), conforme o enunciado permite.  
+   - Schema garantido no start: constraints de unicidade em nct_id e nomes; índices em phase/status. Carga em lote com `UNWIND + MERGE` (idempotente, sem passos manuais).
+
+4) **Validação (queries obrigatórias)**  
+   - `queries.cypher` traz: top drugs; por empresa (drugs/conditions); por condição (drugs/fases); cobertura de rota/dosagem.
 
 
 ## Decisões e Racional
@@ -65,24 +104,37 @@ A arquitetura do pipeline foi desenhada para refletir separação de responsabil
    - Escolha: `.title()` para reduzir variação trivial com custo baixo. Risco: acrônimos podem ser alterados (dnaJ → Dnaj); limitação registrada. Futuro: lista de exceções/sinônimos se necessário.
 
 
-## Como o Sistema Funciona (atendendo aos requisitos funcionais)
+## Deep Dive: O Desafio da Extração de Entidades
 
-1) **Ingestão (query reproduzível, dataset não trivial, estágio clínico)**  
-   - Query versionada em `config/extract_trials.sql`: estudos intervencionais em PHASE1/2/3/4 (inclui PHASE1/PHASE2, PHASE2/PHASE3) e `intervention_type IN ('DRUG','BIOLOGICAL')` (nossa definição de “clinical-stage”).  
-   - Retorna agregado por estudo (`json_agg`) e, por padrão, processa 1000 trials (≥ 500 exigido). Sem binários/dumps: sempre dados atuais do AACT público.
+A inferência de rota e forma farmacêutica em texto livre do ClinicalTrials.gov é difícil por falta de padronização. A estratégia escolhida é uma linha de base deliberada, priorizando precisão e transparência em detrimento de recall. A “escada” de evolução possível:
 
-2) **Transformação (campos mínimos, normalização, faltantes/duplicatas)**  
-   - Captura: Drug (lista de intervenções), Condition, Organization (sponsor/collaborators), NCT ID, Title, Phase, Status; rota/forma se houver texto.  
-   - Normaliza textos (trim/Title Case) e deduplica condições; campos ausentes viram `Unknown` em rota/forma em vez de gerar erro; mantém placebo para fidelidade.
+- **Nível 1 (atual) — Heurísticas / Keywords (rules):** baixo custo, determinístico, auditável; roda em segundos no Docker. Cobertura limitada porque muitas descrições trazem só o nome da droga. Preferimos `Unknown` a falsos positivos.
+- **Nível 2 — Regex estruturado:** descartado aqui porque as descrições não seguem padrão fixo (ordem de dose/droga varia, texto é esparso).
+- **Nível 3 — NLP biomédico (SciSpacy/BioBERT):** maior recall sem depender de palavras exatas; custo de imagem/build maior e mais dependências.
+- **Nível 4 — LLMs/AI Functions (GPT-4, Llama-3 via Databricks ou local):** melhor assertividade potencial, mas traz custo, latência e requer validação humana (human-in-the-loop) e governança.
 
-3) **Modelagem e Carga (grafo, rota/forma contextual, idempotência) - Neo4J**  
-   - Nós: Trial, Drug, Condition, Organization.  
-   - Relações: `STUDIED_IN` (com `route`, `dosage_form`), `SPONSORED_BY`, `STUDIES_CONDITION`. Rota/forma ficam na relação (trial-specific), conforme o enunciado permite.  
-   - Schema garantido no start: constraints de unicidade em nct_id e nomes; índices em phase/status. Carga em lote com `UNWIND + MERGE` (idempotente, sem passos manuais).
+Posicionamento: mantivemos o Nível 1 para cumprir o desafio com leveza, reprodutibilidade e clareza. Próximos passos naturais seriam experimentar Nível 3 (modelos biomédicos) ou Nível 4 (LLM) se aceitarmos maior custo/complexidade em troca de maior recall.
 
-4) **Validação (queries obrigatórias)**  
-   - `queries.cypher` traz: top drugs; por empresa (drugs/conditions); por condição (drugs/fases); cobertura de rota/dosagem.
+## Modelo de Grafo (Neo4j)
+- Nós: Trial (chave `nct_id`), Drug (`name`), Condition (`name`), Organization (`name`).
+- Relações: Trial–Drug via STUDIED_IN (com propriedades `route` e `dosage_form` quando conhecidas); Trial–Condition via STUDIES_CONDITION; Trial–Organization via SPONSORED_BY (propriedade `class` quando conhecida).
+- Constraints/Índices: unicidade em `nct_id` de Trial e nomes de Drug/Condition/Organization; índices em `Trial.phase` e `Trial.status`.
 
+## Consulta de Extração (AACT)
+Arquivo: `config/extract_trials.sql`
+- Filtra **intervention_type IN ('DRUG', 'BIOLOGICAL')** (para cobrir small molecules e biológicos).
+- Fases clínicas: `PHASE1`, `PHASE2`, `PHASE3`, `PHASE4`, `PHASE1/PHASE2`, `PHASE2/PHASE3`.
+- Estudo intervencional: `study_type = 'INTERVENTIONAL'`.
+- Agrupa:
+  - `drugs`: lista de `{name, description}`
+  - `conditions`: lista de nomes
+  - `sponsors`: lista de `{name, class}`
+
+## Inferência de Rota/Dosagem
+Arquivo: `config/text_rules.yaml`
+- Regras de keywords para `routes` (Oral, Intravenous, Subcutaneous, etc.) e `dosage_forms` (Tablet, Injection, Cream, etc.).
+- Aplicado à **description** da intervenção. Se não houver texto, retorna `Unknown`.
+- Cobertura observada em 1000 trials: 1.645 relações Trial–Drug, 79 com rota (≈4,8%), 21 com forma (≈1,3%). Limitação documentada: falta de texto rico na fonte.
 
 
 ## Pré-requisitos
@@ -153,17 +205,12 @@ docker compose run --rm etl python src/main.py
 ```
 - Carga é idempotente (MERGE evita duplicatas).
 
+
 ## Limitações Conhecidas
 - Baixa cobertura de rota/dosagem por falta de texto rico nas descrições de intervenção; muitos `Unknown`.
 - `.title()` pode simplificar acrônimos (ex.: dnaJ → Dnaj).
 - Placebo permanece como Drug (fidelidade à fonte); pode ser filtrado se desejado.
 - Não usamos LLM/NER pesado para manter imagem leve e execução offline; limitação documentada.
-
-## Próximos Passos (se houvesse mais tempo)
-- NER/LLM (BioBERT/SciSpacy) para melhorar rota/dosagem.
-- Heurística no nome da droga para extrair forma/rota sem alterar o identificador.
-- Métricas automáticas (nós/arestas criados, coverage de campos).
-- Ingestão incremental e orquestração (Airflow/Prefect).
 
 
 ## Decisões e Trade-offs
@@ -180,70 +227,6 @@ docker compose run --rm etl python src/main.py
 - **Normalização de nomes:** `.title()` pode simplificar acrônimos (ex: dnaJ → Dnaj). Documentado como limitação aceitável.
 
 
-## Deep Dive: O Desafio da Extração de Entidades
-
-A inferência de rota e forma farmacêutica em texto livre do ClinicalTrials.gov é difícil por falta de padronização. A estratégia escolhida é uma linha de base deliberada, priorizando precisão e transparência em detrimento de recall. A “escada” de evolução possível:
-
-- **Nível 1 (atual) — Heurísticas / Keywords (rules):** baixo custo, determinístico, auditável; roda em segundos no Docker. Cobertura limitada porque muitas descrições trazem só o nome da droga. Preferimos `Unknown` a falsos positivos.
-- **Nível 2 — Regex estruturado:** descartado aqui porque as descrições não seguem padrão fixo (ordem de dose/droga varia, texto é esparso).
-- **Nível 3 — NLP biomédico (SciSpacy/BioBERT):** maior recall sem depender de palavras exatas; custo de imagem/build maior e mais dependências.
-- **Nível 4 — LLMs/AI Functions (GPT-4, Llama-3 via Databricks ou local):** melhor assertividade potencial, mas traz custo, latência e requer validação humana (human-in-the-loop) e governança.
-
-Posicionamento: mantivemos o Nível 1 para cumprir o desafio com leveza, reprodutibilidade e clareza. Próximos passos naturais seriam experimentar Nível 3 (modelos biomédicos) ou Nível 4 (LLM) se aceitarmos maior custo/complexidade em troca de maior recall.
-
-## Diagrama (Visão Geral)
-```mermaid
-graph TD
-    subgraph External_Data
-        AACT[(AACT Public Postgres)]
-    end
-
-    subgraph ETL_Container [Docker: Python ETL]
-        E[Extract: SQL Declarativo] --> T[Transform: Data Cleaning & Rule-based NLP]
-        T --> L[Load: Neo4j Client / UNWIND Batches]
-
-        Config{Config & Rules} -.-> E
-        Config -.-> T
-    end
-
-    subgraph Graph_Storage
-        Neo[(Neo4j Graph Database)]
-    end
-
-    AACT -->|Stream JSON Aggregated| E
-    L -->|Cypher MERGE| Neo
-```
-
-## Consulta de Extração (AACT)
-Arquivo: `config/extract_trials.sql`
-- Filtra **intervention_type IN ('DRUG', 'BIOLOGICAL')** (para cobrir small molecules e biológicos).
-- Fases clínicas: `PHASE1`, `PHASE2`, `PHASE3`, `PHASE4`, `PHASE1/PHASE2`, `PHASE2/PHASE3`.
-- Estudo intervencional: `study_type = 'INTERVENTIONAL'`.
-- Agrupa:
-  - `drugs`: lista de `{name, description}`
-  - `conditions`: lista de nomes
-  - `sponsors`: lista de `{name, class}`
-
-## Inferência de Rota/Dosagem
-Arquivo: `config/text_rules.yaml`
-- Regras de keywords para `routes` (Oral, Intravenous, Subcutaneous, etc.) e `dosage_forms` (Tablet, Injection, Cream, etc.).
-- Aplicado à **description** da intervenção. Se não houver texto, retorna `Unknown`.
-- Cobertura observada em 1000 trials: 1.645 relações Trial–Drug, 79 com rota (≈4,8%), 21 com forma (≈1,3%). Limitação documentada: falta de texto rico na fonte.
-
-## Modelo de Grafo (Neo4j)
-- Nós: Trial (chave `nct_id`), Drug (`name`), Condition (`name`), Organization (`name`).
-- Relações: Trial–Drug via STUDIED_IN (com propriedades `route` e `dosage_form` quando conhecidas); Trial–Condition via STUDIES_CONDITION; Trial–Organization via SPONSORED_BY (propriedade `class` quando conhecida).
-- Constraints/Índices: unicidade em `nct_id` de Trial e nomes de Drug/Condition/Organization; índices em `Trial.phase` e `Trial.status`.
-
-
-## Limitações Conhecidas
-- Inferência limitada por falta de texto rico: muitos `Unknown` para rota/dosagem.
-- Normalização de nomes via `.title()` pode simplificar acrônimos (ex: dnaJ → Dnaj).
-- Placebo permanece como droga (fidelidade à fonte). Opcional filtrar se necessário.
-- Não usamos LLM/NER pesado para manter imagem leve e execução offline; limitação documentada.
-- Ao iniciar, o Neo4j pode avisar que constraints/índices já existem; é esperado (uso de `IF NOT EXISTS`).
-
-
 ## Exemplos de Saída (queries no Neo4j)
 - Top drugs (1000 trials): Zidovudine 122, Didanosine 54, Buprenorphine 42, Lamivudine 34, Stavudine 32, Zalcitabine 20, Indinavir Sulfate 20, Nevirapine 19, Rgp120/Hiv-1 Sf-2 18, Ritonavir 18.
 - Por empresa (Novartis): Drugs: Rivastigmine; Conditions: Alzheimer Disease, Cognition Disorders.
@@ -252,8 +235,7 @@ Arquivo: `config/text_rules.yaml`
 
 
 ## Próximos Passos (se houvesse mais tempo)
-- NER/LLM (BioBERT/SciSpacy) ou LLMs gerenciados para melhorar rota/dosagem.
-- Enriquecer normalização de nomes (sinônimos, remoção controlada de sufixos sem afetar identidade).
+- NER/LLM (BioBERT/SciSpacy) para melhorar rota/dosagem.
+- Heurística no nome da droga para extrair forma/rota sem alterar o identificador.
 - Métricas automáticas (nós/arestas criados, coverage de campos).
 - Ingestão incremental e orquestração (Airflow/Prefect).
-
