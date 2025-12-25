@@ -1,6 +1,7 @@
 import os
 import sys
 import unittest
+import logging
 
 # Ensure src is on path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -11,6 +12,8 @@ from src.transform.data_cleaner import DataCleaner
 class TestDataCleaner(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        logging.basicConfig(level=logging.INFO)
+        cls.logger = logging.getLogger("tests.test_data_cleaner")
         cls.cleaner = DataCleaner()
 
     def test_clean_study_with_drug_and_conditions(self):
@@ -27,7 +30,9 @@ class TestDataCleaner(unittest.TestCase):
             "sponsors": [{"name": "Pfizer Inc", "class": "INDUSTRY"}],
         }
 
+        self.logger.info("Raw input: %s", raw)
         clean = self.cleaner.clean_study(raw)
+        self.logger.info("Cleaned output: %s", clean)
 
         # Title trimmed
         self.assertEqual(clean["title"], "lung cancer study")

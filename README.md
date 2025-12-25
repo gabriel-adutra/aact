@@ -281,6 +281,7 @@ docker compose exec etl python -m unittest -v tests.test_text_parser
 ```
 docker compose exec etl python -m unittest -v tests.test_data_cleaner
 ```
+
 ## Ajustes de Volume
 - Editar `run_pipeline(limit=..., batch_size=...)` em `src/main.py` e rodar novamente:
 ```
@@ -294,6 +295,7 @@ docker compose run --rm etl python src/main.py
 - Testes unitários validam parser e limpeza (`tests/test_text_parser.py`, `tests/test_data_cleaner.py`). Rodar com: `docker compose run --rm etl python -m unittest discover tests`
 - Filosofia: preferimos precisão a falsos positivos; `Unknown` é usado quando não há evidência suficiente.
 - Logs do pipeline mostram batches carregados e progresso, úteis para monitorar execução.
+- Teste de integração (bônus) que carrega um conjunto sintético no Neo4j e valida contagens/queries: `docker compose exec etl python -m unittest -v tests.test_bonus_integration`
 
 
 ## Limitações Conhecidas
