@@ -12,6 +12,12 @@ Este repositório implementa um pipeline ETL completo, idempotente e conteineriz
 ## Arquitetura (Separação de Responsabilidades)
 A arquitetura do pipeline foi desenhada para refletir separação de responsabilidades, configurabilidade e idempotência, alinhada ao que o desafio valoriza (“pipeline bem arquitetado”, “config-driven”, “batching/backpressure”, “idempotent loads”). Essa organização segue a diretriz de “estrutura clara”: cada módulo tem uma única missão (ler, processar, carregar, orquestrar), e as regras/queries ficam em config para facilitar ajustes sem tocar no código.
 
+### Características do Sistema
+- **Batch & Idempotente:** MERGE em todas as entidades. Repetir o ETL não duplica dados.
+- **Config‑driven:** SQL, regras de texto e variáveis sensíveis em arquivos dedicados (`.env`).
+- **Leve & Reprodutível:** Rule‑based NLP em vez de LLM/NER pesado. Imagem Docker enxuta.
+- **Resiliente:** Constraints e índices aplicados automaticamente. Logs claros de progresso.
+
 ## Diagrama (Visão Geral)
 ```mermaid
 graph TD
@@ -76,19 +82,12 @@ graph TD
 - `src/main.py` — Orquestrador do pipeline (Extract → Transform → Load) com batch e limite configuráveis.
 - `queries.cypher` — Consultas de demonstração para validação rápida no Neo4j.
 
-## Testes unitários e teste de integração (bônus)
+## Testes Unitários e Teste de Integração (bônus)
 - `tests/test_text_parser.py` — Teste unitário que valida parser de route/dosage_form.
 - `tests/test_data_cleaner.py` — Teste unitário que valida cleaner/normalização dos dados.
 - `tests/test_readme_example.py` — Teste unitário que valida um exemplo descrito nesse README (End to End de um único registro.)
 - `tests/test_bonus_integration.py` — Teste de integração (bônus) que extrai, transforma e carrega um conjunto pequeno de dados no Neo4j
 - Logs de testes mostram batches carregados, progresso e carregamento, úteis para monitorar execução.
-
-
-### Características do Sistema
-- **Batch & Idempotente:** MERGE em todas as entidades. Repetir o ETL não duplica dados.
-- **Config‑driven:** SQL, regras de texto e variáveis sensíveis em arquivos dedicados (`.env`).
-- **Leve & Reprodutível:** Rule‑based NLP em vez de LLM/NER pesado. Imagem Docker enxuta.
-- **Resiliente:** Constraints e índices aplicados automaticamente. Logs claros de progresso.
 
 
 ## Como o Sistema Funciona (atendendo aos requisitos funcionais)
@@ -110,6 +109,25 @@ graph TD
    - `queries.cypher` traz quatro consultas de validação: (1) top drugs por número de trials; (2) por empresa, listando drogas e condições; (3) por condição, mostrando drogas e fases; (4) cobertura de route/dosage_form.
 
 
+## Deep Dive: O Desafio da Extração de Entidades
+
+A inferência de route e dosage_forma farmacêutica em texto livre do ClinicalTrials.gov é difícil por falta de padronização. A estratégia escolhida é uma linha de base deliberada, priorizando precisão e transparência em detrimento de recall. A “escada” de evolução possível:
+
+- **Nível 1 (atual) — Heurísticas / Keywords (rules):** baixo custo, determinístico, auditável; roda em segundos no Docker. Cobertura limitada porque muitas descrições trazem só o nome da droga. Preferimos `Unknown` a falsos positivos.
+- **Nível 2 — Regex estruturado:** descartado aqui porque as descrições não seguem padrão fixo (ordem de dose/droga varia, texto é esparso).
+- **Nível 3 — NLP biomédico (SciSpacy/BioBERT):** maior recall sem depender de palavras exatas; custo de imagem/build maior e mais dependências.
+- **Nível 4 — LLMs/AI Functions (GPT-4, Llama-3 via Databricks ou local):** melhor assertividade potencial, mas traz custo, latência e requer validação humana (human-in-the-loop) e governança.
+
+Posicionamento: mantivemos o Nível 1 para cumprir o desafio com leveza, reprodutibilidade e clareza. Próximos passos naturais seriam experimentar Nível 3 (modelos biomédicos) ou Nível 4 (LLM) se aceitarmos maior custo/complexidade em troca de maior recall.
+
+
+## Inferência de route/dosage_form a partir do campo description
+Arquivo: `config/text_rules.yaml`
+- Regras de keywords para `routes` (Oral, Intravenous, Subcutaneous, etc.) e `dosage_forms` (Tablet, Injection, Cream, etc.).
+- Aplicado à **description** da intervenção. Se não houver texto, retorna `Unknown`.
+- Cobertura observada em 1000 trials: 1.645 relações Trial–Drug, 79 com route (≈5,0%), 21 com dosage_form (≈1,3%). Limitação documentada: falta de texto rico na fonte.
+
+
 ## Decisões e Racional
 
 1) **Fonte AACT direta (Postgres público) vs. dump local (2GB)**
@@ -127,7 +145,7 @@ graph TD
 3) **Inferência de route/dosage_form por palavras‑chave (regras)**
    - Alternativas: LLM/NER (maior recall, custo/peso maiores) ou heurísticas simples. Inclui opções gerenciadas como Databricks AI Query, que facilitam mas dependem de cloud, custo e latência.
    - Escolha: regras no `config/text_rules.yaml`, porque são leves, auditáveis e reprodutíveis em ambiente Docker enxuto. Aderem ao espírito do desafio (não construir uma ontologia farmacêutica “perfeita”, mas uma abordagem razoável e documentada).
-   - Limitação: descrições pobres geram `Unknown` (~5% rota, ~1% forma em 1000 trials). Documentado como risco conhecido. Futuro: NER/LLM (BioBERT/SciSpacy), AI Query gerenciado (ex.: Databricks) ou hints no nome da droga, se aceitarmos custo/complexidade adicionais.
+   - Limitação: descrições pobres geram `Unknown` (~5,0% rota, ~1,3% forma em 1000 trials). Documentado como risco conhecido. Futuro: NER/LLM (BioBERT/SciSpacy), AI Query gerenciado (ex.: Databricks) ou hints no nome da droga, se aceitarmos custo/complexidade adicionais.
 
 4) **Intervention types: DRUG e BIOLOGICAL**
    - Alternativas: só DRUG (perde vacinas/anticorpos) ou incluir ambos.
@@ -143,18 +161,6 @@ graph TD
    - Escolha: `.title()` para reduzir variação trivial com custo baixo. Risco: acrônimos podem ser alterados (dnaJ → Dnaj); limitação registrada. Futuro: lista de exceções/sinônimos se necessário.
 
 
-## Deep Dive: O Desafio da Extração de Entidades
-
-A inferência de route e dosage_forma farmacêutica em texto livre do ClinicalTrials.gov é difícil por falta de padronização. A estratégia escolhida é uma linha de base deliberada, priorizando precisão e transparência em detrimento de recall. A “escada” de evolução possível:
-
-- **Nível 1 (atual) — Heurísticas / Keywords (rules):** baixo custo, determinístico, auditável; roda em segundos no Docker. Cobertura limitada porque muitas descrições trazem só o nome da droga. Preferimos `Unknown` a falsos positivos.
-- **Nível 2 — Regex estruturado:** descartado aqui porque as descrições não seguem padrão fixo (ordem de dose/droga varia, texto é esparso).
-- **Nível 3 — NLP biomédico (SciSpacy/BioBERT):** maior recall sem depender de palavras exatas; custo de imagem/build maior e mais dependências.
-- **Nível 4 — LLMs/AI Functions (GPT-4, Llama-3 via Databricks ou local):** melhor assertividade potencial, mas traz custo, latência e requer validação humana (human-in-the-loop) e governança.
-
-Posicionamento: mantivemos o Nível 1 para cumprir o desafio com leveza, reprodutibilidade e clareza. Próximos passos naturais seriam experimentar Nível 3 (modelos biomédicos) ou Nível 4 (LLM) se aceitarmos maior custo/complexidade em troca de maior recall.
-
-
 ## Consulta de Extração (AACT)
 Arquivo: `config/extract_trials.sql`
 - Filtra **intervention_type IN ('DRUG', 'BIOLOGICAL')** (para cobrir small molecules e biológicos).
@@ -165,7 +171,8 @@ Arquivo: `config/extract_trials.sql`
   - `conditions`: lista de nomes
   - `sponsors`: lista de `{name, class}`
 
-Exemplo do README. (1 registro extraído):
+
+## Exemplo do README: Esse exemplo está escrito como o teste unitário `tests/test_readme_example.py`
 ```
 {
   "nct_id": "NCT00000102",
@@ -222,37 +229,24 @@ Exemplo de saída:
 └──────────────┴────────┴──────┴────────────┴─────────────┴─────────────────────┴──────────────┘
 ```
 
+
 ## Modelo de Grafo (Neo4j)
 - Nós: Trial (chave `nct_id`), Drug (`name`), Condition (`name`), Organization (`name`).
 - Relações: Trial–Drug via STUDIED_IN (com propriedades `route` e `dosage_form` quando conhecidas); Trial–Condition via STUDIES_CONDITION; Trial–Organization via SPONSORED_BY (propriedade `class` quando conhecida).
 - Constraints/Índices: unicidade em `nct_id` de Trial e nomes de Drug/Condition/Organization; índices em `Trial.phase` e `Trial.status`.
 
-## Inferência de route/dosage_form
-Arquivo: `config/text_rules.yaml`
-- Regras de keywords para `routes` (Oral, Intravenous, Subcutaneous, etc.) e `dosage_forms` (Tablet, Injection, Cream, etc.).
-- Aplicado à **description** da intervenção. Se não houver texto, retorna `Unknown`.
-- Cobertura observada em 1000 trials: 1.645 relações Trial–Drug, 79 com route (≈4,8%), 21 com dosage_form (≈1,3%). Limitação documentada: falta de texto rico na fonte.
-
-## Testes e Qualidade
-- Teste unitário valida parser do texto (`tests/test_text_parser.py`)
-- Teste unitário valida limpeza dos dados (`tests/test_data_cleaner.py`)
-- Teste unitário que valida exemplo descrito nesse README. (End to End de um único registro.) (`tests/test_readme_example.py`)
-- Teste de integração (bônus) que extrai, transforma e carrega um conjunto pequeno de dados no Neo4j  (`tests/test_bonus_integration.py`)
-- Filosofia: preferimos precisão a falsos positivos; `Unknown` é usado quando não há evidência suficiente.
-- Logs de testes mostram batches carregados, progresso e carregamento, úteis para monitorar execução.
-
 
 ## Pré-requisitos
 - Docker + Docker Compose.
-- Conta AACT para credenciais Postgres (criar em https://aact.ctti-clinicaltrials.org/).
+- Crie uma conta AACT para usar as credenciais Postgres (criar em https://aact.ctti-clinicaltrials.org/).
 
-Exemplo de `.env` (não versionar):
+Insira suas credenciais nos campos AACT_USER e AACT_PASSWORD do `.env`:
 ```
 AACT_HOST=aact-db.ctti-clinicaltrials.org
 AACT_PORT=5432
 AACT_DB=aact
-AACT_USER=SEU_USUARIO
-AACT_PASSWORD=SUASENHA
+AACT_USER=<SEU_USUARIO>
+AACT_PASSWORD=<SUA_SENHA>
 
 NEO4J_URI=bolt://neo4j:7687
 NEO4J_USER=neo4j
@@ -273,7 +267,7 @@ docker compose exec etl python src/main.py
 - User: `neo4j`  
 - Pass: `password` (ajuste no `.env` se quiser)
 
-4) Consultas de Demonstração (também em `queries.cypher`) com exemplos de resultado:
+4) Consultas de Demonstração (também em `queries.cypher`):
 - Top drugs:
 ```
 MATCH (d:Drug)<-[:STUDIED_IN]-(t:Trial)
@@ -305,7 +299,7 @@ RETURN
 
 5) Rodar testes unitários:
 
-- Apenas o test_readme_example (End to End de um registro):
+- Apenas o test_readme_example (end to end de um registro):
 ```
 docker compose exec etl python -m unittest -v tests.test_readme_example
 ```
@@ -322,6 +316,10 @@ docker compose exec etl python -m unittest -v tests.test_data_cleaner
 docker compose exec etl python -m unittest -v tests.test_data_cleaner
 ```
 
+## Exemplos de Resultados em Screenshot. Saídas baseadas em queries no Neo4j.
+
+
+
 
 ## Decisões e Trade-offs
 - **AACT direto (Postgres público)** em vez de dump local de 2GB: zero dependência de arquivo gigante e experiência “clone & run”.
@@ -335,8 +333,6 @@ docker compose exec etl python -m unittest -v tests.test_data_cleaner
   - Documentamos a limitação e o caminho de melhoria (usar NER/LLM no futuro).
 - **Placebo como droga:** Mantido conforme fonte; decisão de negócio poderia filtrar, mas preservamos fidelidade aos dados.
 - **Normalização de nomes:** `.title()` pode simplificar acrônimos (ex: dnaJ → Dnaj). Documentado como limitação aceitável.
-
-## Screenshots de saídas baseadas em queries no Neo4j.
 
 
 ## Próximos Passos (se houvesse mais tempo)
