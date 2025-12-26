@@ -14,7 +14,7 @@ A arquitetura do pipeline foi desenhada para refletir separação de responsabil
 
 ### Características do Sistema
 - **Batch & Idempotente:** MERGE em todas as entidades. Repetir o ETL não duplica dados.
-- **Config‑driven:** SQL, regras de texto e variáveis sensíveis em arquivos dedicados.
+- **Config‑driven:** SQL, regras de extração de entidades e variáveis sensíveis em arquivos dedicados.
 - **Leve & Reprodutível:** Rule‑based NLP em vez de LLM/NER pesado. Imagem Docker enxuta.
 - **Resiliente:** Constraints e índices aplicados automaticamente. Logs claros de progresso.
 
