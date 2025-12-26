@@ -31,6 +31,7 @@ class Neo4jClient:
 
 
     def ensure_graph_schema(self):
+        logger.info("Ensuring Neo4j schema. Constraints and indexes created only if missing (idempotent).")
         queries = [
             # Constraints (Uniqueness)
             "CREATE CONSTRAINT trial_nct_id IF NOT EXISTS FOR (t:Trial) REQUIRE t.nct_id IS UNIQUE",
@@ -47,7 +48,7 @@ class Neo4jClient:
             for q in queries:
                 try:
                     session.run(q)
-                    logger.info(f"Schema applied: {q}")
+                    logger.debug(f"Schema applied: {q}")
                 except Exception as e:
                     logger.warning(f"Schema query failed (might already exist): {e}")
                     
@@ -91,7 +92,7 @@ class Neo4jClient:
         with self.driver.session() as session:
             try:
                 session.run(cypher, batch=batch)
-                logger.info(f"Loaded batch of {len(batch)} trials to Neo4j.")
+                logger.info(f"Loaded batch of {len(batch)} trials into Neo4j.")
             except Exception as e:
                 logger.error(f"Failed to load batch: {e}")
                 raise
