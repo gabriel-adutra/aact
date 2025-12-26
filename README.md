@@ -65,6 +65,11 @@ graph TD
 │   ├── test_text_parser.py
 │   ├── test_readme_example.py
 │   └── test_bonus_integration.py
+├── docs
+│   ├── topDrugs.png
+│   ├── byCompany_Novartis.png
+│   ├── byCondition_Alzheimers.png
+│   ├── route_dosage_form_coverage.png
 ├── .env
 ├── README.md
 ├── docker-compose.yml
@@ -81,6 +86,7 @@ graph TD
 - `src/load/neo4j_client.py` — Adapter de escrita Neo4j (constraints, índices, carga em lote via UNWIND).
 - `src/main.py` — Orquestrador do pipeline (Extract → Transform → Load) com batch e limite configuráveis.
 - `queries.cypher` — Consultas de demonstração para validação rápida no Neo4j.
+- `docs`— Contém screenshots do retorno das queries, como solicitado no code challenge.
 
 ## Testes Unitários e Teste de Integração (bônus)
 - `tests/test_text_parser.py` — Teste unitário que valida parser de route/dosage_form.
@@ -262,12 +268,32 @@ docker compose up --build -d
 ```
 docker compose exec etl python src/main.py
 ```
-3) Acesse Neo4j Browser:
+
+3) Rode os Testes Unitários e de Integração:
+
+- Apenas o test_text_parser:
+```
+docker compose exec etl python -m unittest -v tests.test_text_parser
+```
+- Apenas o test_data_cleaner:
+```
+docker compose exec etl python -m unittest -v tests.test_data_cleaner
+```
+- Apenas o test_readme_example (end to end de um registro):
+```
+docker compose exec etl python -m unittest -v tests.test_readme_example
+```
+- Apenas o teste de integração test_bonus_integration.py:
+```
+docker compose exec etl python -m unittest -v tests.test_bonus_integration
+```
+
+4) Acesse Neo4j Browser:
 - URL: http://localhost:7474  
 - User: `neo4j`  
 - Pass: `password`
 
-4) Realize as Consultas de Demonstração Abaixo (também em `queries.cypher`):
+5) Realize as Consultas de Demonstração Abaixo (também disponíveis em `queries.cypher`):
 - Top drugs:
 ```
 MATCH (d:Drug)<-[:STUDIED_IN]-(t:Trial)
@@ -297,29 +323,19 @@ RETURN
   SUM(CASE WHEN r.dosage_form IS NOT NULL AND r.dosage_form <> "Unknown" THEN 1 ELSE 0 END) AS with_dosage_form;
 ```
 
-5) Rode os Testes Unitários e de Integração:
+## Exemplos de Resultados em Screenshot. Saídas baseadas nas queries do Neo4j citadas acima.
 
-- Apenas o test_text_parser:
-```
-docker compose exec etl python -m unittest -v tests.test_text_parser
-```
-- Apenas o test_data_cleaner:
-```
-docker compose exec etl python -m unittest -v tests.test_data_cleaner
-```
-- Apenas o test_readme_example (end to end de um registro):
-```
-docker compose exec etl python -m unittest -v tests.test_readme_example
-```
-- Apenas o teste de integração test_bonus_integration.py:
-```
-docker compose exec etl python -m unittest -v tests.test_bonus_integration
-```
+- Top drugs:
+![](docs/topDrugs.png)
 
+- Por empresa (ex.: Novartis):
+![](docs/byCompany_Novartis.png)
 
-## Exemplos de Resultados em Screenshot. Saídas baseadas em queries no Neo4j.
+- Por condição (ex.: Alzheimer’s disease):
+![](docs/byCondition_Alzheimers.png)
 
-
+- Cobertura de route/dosage_form:
+![](docs/route_dosage_form_coverage.png)
 
 
 ## Decisões e Trade-offs
