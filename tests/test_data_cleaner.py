@@ -2,6 +2,7 @@ import os
 import sys
 import unittest
 import logging
+import json
 
 # Ensure src is on path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -30,9 +31,9 @@ class TestDataCleaner(unittest.TestCase):
             "sponsors": [{"name": "Pfizer Inc", "class": "INDUSTRY"}],
         }
 
-        self.logger.info("Raw input: %s", raw)
+        self.logger.info("Raw input:\n%s", json.dumps(raw, ensure_ascii=False, indent=2))
         clean = self.cleaner.clean_study(raw)
-        self.logger.info("Cleaned output: %s", clean)
+        self.logger.info("Cleaned output:\n%s", json.dumps(clean, ensure_ascii=False, indent=2))
 
         # Title trimmed
         self.assertEqual(clean["title"], "lung cancer study")
