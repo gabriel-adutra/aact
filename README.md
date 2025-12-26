@@ -173,6 +173,8 @@ Arquivo: `config/extract_trials.sql`
 
 
 ## Exemplo do README: Esse exemplo está escrito como o teste unitário `tests/test_readme_example.py`
+
+Extract:
 ```
 {
   "nct_id": "NCT00000102",
@@ -189,7 +191,7 @@ Arquivo: `config/extract_trials.sql`
 }
 ```
 
-Exemplo (mesmo registro após limpeza/transform):
+Transform:
 ```
 {
   "nct_id": "NCT00000102",
@@ -206,7 +208,7 @@ Exemplo (mesmo registro após limpeza/transform):
 }
 ```
 
-Exemplo de projeção tabular do grafo no Neo4j Browser:
+Load - Exemplo de projeção tabular do grafo no Neo4j Browser
 ```
 MATCH (t:Trial {nct_id:"NCT00000102"})
 OPTIONAL MATCH (t)<-[r:STUDIED_IN]-(d:Drug)
