@@ -221,9 +221,7 @@ RETURN t.nct_id AS trial,
        c.name    AS condition,
        o.name    AS sponsor,
        s.class   AS sponsor_class;
-```
-Exemplo de saída:
-```
+       
 ┌──────────────┬────────┬──────┬────────────┬─────────────┬─────────────────────┬──────────────┐
 │ trial        │ drug   │ route│ dosage_form│ condition   │ sponsor             │ sponsor_class│
 ├──────────────┼────────┼──────┼────────────┼─────────────┼─────────────────────┼──────────────┤
