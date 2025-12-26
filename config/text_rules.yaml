@@ -5,20 +5,17 @@ routes:
   Oral:
     - oral
     - by mouth
-    - po
     - tablet
     - capsule
     - pill
     - swallow
   Intravenous:
     - intravenous
-    - iv
     - infusion
     - drip
     - injection into vein
   Subcutaneous:
     - subcutaneous
-    - sc
     - injection under skin
   Topical:
     - topical
@@ -48,4 +45,9 @@ dosage_forms:
     - cream
     - ointment
     - gel
+  EyeDrops:
+    - eye drops
+    - ophthalmic drops
+    - ophthalmic solution
+    - eye solution
 
