@@ -76,8 +76,8 @@ graph TD
 - `src/main.py` — Orquestrador do pipeline (Extract → Transform → Load) com batch e limite configuráveis.
 - `tests/test_text_parser.py` — Unitário do parser de rota/forma.
 - `tests/test_data_cleaner.py` — Unitário do cleaner/normalização.
-- `tests/test_readme_example.py` — Valida o exemplo de um único registro (entrada/saída/tabela) que há mais abaixo aqui nesse README.
-- `tests/test_bonus_integration.py` — Carga sintética no Neo4j e queries de validação.
+- `tests/test_readme_example.py` — Unitário que valida o exemplo de um único registro (entrada/saída/tabela) que há mais abaixo aqui nesse README.
+- `tests/test_bonus_integration.py` — Integração que faz carga sintética no Neo4j e queries de validação.
 - `queries.cypher` — Consultas de demonstração para validação rápida no Neo4j.
 
 
