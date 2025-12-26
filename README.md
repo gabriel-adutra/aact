@@ -20,7 +20,7 @@ graph TD
     end
 
     subgraph ETL_Container [Docker: Python ETL]
-        E[Extract: SQL Declarativo] --> T[Transform: Data Cleaning & Rule-based NLP]
+        E[Extract: Declarative SQL] --> T[Transform: Data Cleaning & Rule-based NLP]
         T --> L[Load: Neo4j Client / UNWIND Batches]
 
         Config{Config & Rules} -.-> E
@@ -74,11 +74,14 @@ graph TD
 - `src/transform/text_parser.py` — Inferência rule‑based de route/dosage_form a partir de texto livre.
 - `src/load/neo4j_client.py` — Adapter de escrita Neo4j (constraints, índices, carga em lote via UNWIND).
 - `src/main.py` — Orquestrador do pipeline (Extract → Transform → Load) com batch e limite configuráveis.
-- `tests/test_text_parser.py` — Unitário do parser de route/dosage_form.
-- `tests/test_data_cleaner.py` — Unitário do cleaner/normalização.
-- `tests/test_readme_example.py` — Unitário que valida o exemplo de um único registro (entrada/saída/tabela) que há mais abaixo aqui nesse README.
-- `tests/test_bonus_integration.py` — Integração que faz carga sintética no Neo4j e queries de validação.
 - `queries.cypher` — Consultas de demonstração para validação rápida no Neo4j.
+
+## Testes unitários e teste de integração (bônus)
+- `tests/test_text_parser.py` — Teste unitário que valida parser de route/dosage_form.
+- `tests/test_data_cleaner.py` — Teste unitário que valida cleaner/normalização dos dados.
+- `tests/test_readme_example.py` — Teste unitário que valida um exemplo descrito nesse README (End to End de um único registro.)
+- `tests/test_bonus_integration.py` — Teste de integração (bônus) que extrai, transforma e carrega um conjunto pequeno de dados no Neo4j
+- Logs de testes mostram batches carregados, progresso e carregamento, úteis para monitorar execução.
 
 
 ### Características do Sistema
