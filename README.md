@@ -68,21 +68,21 @@ graph TD
 ```
 
 - `config/extract_trials.sql` — Query declarativa de extração (AACT → JSON agregado por estudo).
-- `config/text_rules.yaml` — Regras declarativas de inferência (rota/dosagem) baseadas em palavras‑chave.
+- `config/text_rules.yaml` — Regras declarativas de inferência (route/dosage_form) baseadas em palavras‑chave.
 - `src/extract/aact_client.py` — Adapter de leitura AACT (PostgreSQL), streaming em batches.
 - `src/load/neo4j_client.py` — Adapter de escrita Neo4j (constraints, índices, carga em lote via UNWIND).
-- `src/transform/data_cleaner.py` — Normalização de campos e orquestração da limpeza.
-- `src/transform/text_parser.py` — Inferência rule‑based de rota/dosagem a partir de texto livre.
+- `src/transform/data_cleaner.py` — Normalização de campos e orquestração da limpeza (inclui route/dosage_form em STUDIED_IN).
+- `src/transform/text_parser.py` — Inferência rule‑based de route/dosage_form a partir de texto livre.
 - `src/main.py` — Orquestrador do pipeline (Extract → Transform → Load) com batch e limite configuráveis.
 - `tests/test_text_parser.py` — Unitário do parser de rota/forma.
 - `tests/test_data_cleaner.py` — Unitário do cleaner/normalização.
-- `tests/test_readme_example.py` — Valida o exemplo do README (entrada/saída/tabela).
+- `tests/test_readme_example.py` — Valida o exemplo de um único registro (entrada/saída/tabela) que há mais abaixo aqui nesse README.
 - `tests/test_bonus_integration.py` — Carga sintética no Neo4j e queries de validação.
 - `queries.cypher` — Consultas de demonstração para validação rápida no Neo4j.
 
 
 ### Características do Sistema
-- **Batch & Idempotente:** MERGE em todas as entidades; repetir o ETL não duplica dados.
+- **Batch & Idempotente:** MERGE em todas as entidades. Repetir o ETL não duplica dados.
 - **Config‑driven:** SQL, regras de texto e variáveis sensíveis em arquivos dedicados (`.env`).
 - **Leve & Reprodutível:** Rule‑based NLP em vez de LLM/NER pesado. Imagem Docker enxuta.
 - **Resiliente:** Constraints e índices aplicados automaticamente. Logs claros de progresso.
@@ -91,16 +91,16 @@ graph TD
 ## Como o Sistema Funciona (atendendo aos requisitos funcionais)
 
 1) **Ingestão (query reproduzível, dataset não trivial, estágio clínico)**  
-   - Query versionada em `config/extract_trials.sql`: estudos intervencionais em PHASE1/2/3/4 (inclui PHASE1/PHASE2, PHASE2/PHASE3) e `intervention_type IN ('DRUG','BIOLOGICAL')` (nossa definição de “clinical-stage”).  
+   - Query versionada em `config/extract_trials.sql`: estudos intervencionais em PHASE1/2/3/4 (inclui PHASE1/PHASE2, PHASE2/PHASE3) e `intervention_type IN ('DRUG','BIOLOGICAL')` (minha definição de “clinical-stage”).  
    - Retorna agregado por estudo (`json_agg`) e, por padrão, processa 1000 trials (≥ 500 exigido). Sem binários/dumps: sempre dados atuais do AACT público.
 
 2) **Transformação (campos mínimos, normalização, faltantes/duplicatas)**  
-   - Captura: Drug (lista de intervenções), Condition, Organization (sponsor/collaborators), NCT ID, Title, Phase, Status; rota/forma se houver texto.  
-   - Normaliza textos (trim/Title Case) e deduplica condições; campos ausentes viram `Unknown` em rota/forma em vez de gerar erro; mantém placebo para fidelidade.
+   - Captura: Drug (lista de intervenções), Condition, Organization (sponsor/collaborators), NCT ID, Title, Phase, Status; route/dosage_form se houver texto.  
+   - Normaliza textos (trim/Title Case) e deduplica condições; campos ausentes viram `Unknown` em route/dosage_form em vez de gerar erro; mantém placebo para fidelidade.
 
-3) **Modelagem e Carga (grafo, rota/forma contextual, idempotência) - Neo4J**  
+3) **Modelagem e Carga (grafo, route/dosage_form contextual, idempotência) - Neo4J**  
    - Nós: Trial, Drug, Condition, Organization.  
-   - Relações: `STUDIED_IN` (com `route`, `dosage_form`), `SPONSORED_BY`, `STUDIES_CONDITION`. Rota/forma ficam na relação (trial-specific), conforme o enunciado permite.  
+   - Relações: `STUDIED_IN` (propriedades `route`, `dosage_form`), `SPONSORED_BY`, `STUDIES_CONDITION`. route/dosage_form ficam na relação (trial-specific), conforme enunciado.  
    - Schema garantido no start: constraints de unicidade em nct_id e nomes; índices em phase/status. Carga em lote com `UNWIND + MERGE` (idempotente, sem passos manuais).
 
 4) **Validação (queries obrigatórias)**  
@@ -196,7 +196,7 @@ Exemplo (mesmo registro após limpeza/transform):
 }
 ```
 
-Visualização típica no Neo4j Browser (consulta e resultado em tabela):
+Exemplo de projeção tabular do grafo no Neo4j Browser:
 ```
 MATCH (t:Trial {nct_id:"NCT00000102"})
 OPTIONAL MATCH (t)<-[r:STUDIED_IN]-(d:Drug)
@@ -224,11 +224,11 @@ Exemplo de saída:
 - Relações: Trial–Drug via STUDIED_IN (com propriedades `route` e `dosage_form` quando conhecidas); Trial–Condition via STUDIES_CONDITION; Trial–Organization via SPONSORED_BY (propriedade `class` quando conhecida).
 - Constraints/Índices: unicidade em `nct_id` de Trial e nomes de Drug/Condition/Organization; índices em `Trial.phase` e `Trial.status`.
 
-## Inferência de Rota/Dosagem
+## Inferência de route/dosage_form
 Arquivo: `config/text_rules.yaml`
 - Regras de keywords para `routes` (Oral, Intravenous, Subcutaneous, etc.) e `dosage_forms` (Tablet, Injection, Cream, etc.).
 - Aplicado à **description** da intervenção. Se não houver texto, retorna `Unknown`.
-- Cobertura observada em 1000 trials: 1.645 relações Trial–Drug, 79 com rota (≈4,8%), 21 com forma (≈1,3%). Limitação documentada: falta de texto rico na fonte.
+- Cobertura observada em 1000 trials: 1.645 relações Trial–Drug, 79 com route (≈4,8%), 21 com dosage_form (≈1,3%). Limitação documentada: falta de texto rico na fonte.
 
 
 ## Pré-requisitos
