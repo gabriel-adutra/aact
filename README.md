@@ -175,7 +175,11 @@ Esses dados podem ser verificados executando o script de análise: `analyzes_ent
    - Alternativas: filtrar placebo na extração ou na carga.
    - Escolha: manter para fidelidade à fonte e para não embutir regra de negócio, facilita auditoria. Se quiser filtrar, é um ajuste simples na SQL.
 
-6) **Normalização de nomes com `.title()`**
+6) **Sponsors: apenas LEAD (não collaborators)**
+   - Alternativas: capturar todos os sponsors (lead + collaborators) ou apenas lead.
+   - Escolha: capturar apenas sponsors com `lead_or_collaborator = 'lead'` para focar no patrocinador principal do estudo. Isso simplifica o modelo de grafo (apenas relação `SPONSORED_BY`, sem necessidade de `COLLABORATES_WITH`) e reduz ruído de organizações secundárias. O desafio permite "and/or" para essas relações, então `SPONSORED_BY` sozinho atende o requisito mínimo. A propriedade `class` na relação `SPONSORED_BY` vem diretamente do campo `agency_class` da tabela `sponsors` do AACT, preservando a classificação original da fonte.
+
+7) **Normalização de nomes com `.title()`**
    - Alternativas: pipelines de normalização avançados (sinônimos, stemming) ou manter bruto.
    - Escolha: `.title()` para reduzir variação trivial com custo baixo. Risco: acrônimos podem ser alterados (dnaJ → Dnaj); limitação registrada. Futuro: lista de exceções/sinônimos se necessário.
 
