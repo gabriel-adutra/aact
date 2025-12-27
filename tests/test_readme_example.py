@@ -6,10 +6,28 @@ from src.transform.data_cleaner import DataCleaner
 
 
 class ReadmeExampleTest(unittest.TestCase):
-    def test_readme_example_transformation(self):
+    @classmethod
+    def setUpClass(cls):
         logging.basicConfig(level=logging.INFO)
-        logger = logging.getLogger("tests.test_readme_example")
+        cls.logger = logging.getLogger("tests.test_readme_example")
+        cls.cleaner = DataCleaner()
 
+    def _log_transformation(self, raw, cleaned):
+        self.logger.info("RAW input (README example):\n%s", json.dumps(raw, ensure_ascii=False, indent=2))
+        self.logger.info("TRANSFORMED output:\n%s", json.dumps(cleaned, ensure_ascii=False, indent=2))
+
+    def _project_to_tabular_view(self, cleaned_trial):
+        return {
+            "trial": cleaned_trial["nct_id"],
+            "drug": cleaned_trial["drugs"][0]["name"],
+            "route": cleaned_trial["drugs"][0]["route"],
+            "dosage_form": cleaned_trial["drugs"][0]["dosage_form"],
+            "condition": cleaned_trial["conditions"][0]["name"],
+            "sponsor": cleaned_trial["sponsors"][0]["name"],
+            "sponsor_class": cleaned_trial["sponsors"][0]["class"],
+        }
+
+    def test_readme_example_transformation(self):
         raw = {
             "nct_id": "NCT00000102",
             "brief_title": "Study of Drug X in Condition Y",
@@ -36,40 +54,23 @@ class ReadmeExampleTest(unittest.TestCase):
             "sponsors": [{"name": "Example Pharma Inc", "class": "INDUSTRY"}],
         }
 
-        cleaner = DataCleaner()
-        logger.info("RAW input (README example):\n%s", json.dumps(raw, ensure_ascii=False, indent=2))
-        cleaned = cleaner.clean_study(raw)
-        logger.info("TRANSFORMED output:\n%s", json.dumps(cleaned, ensure_ascii=False, indent=2))
-
+        cleaned = self.cleaner.clean_study(raw)
+        self._log_transformation(raw, cleaned)
         self.assertEqual(cleaned, expected_clean)
 
-        # Projeção tabular equivalente à consulta no Neo4j
-        table_rows = [
-            {
-                "trial": cleaned["nct_id"],
-                "drug": cleaned["drugs"][0]["name"],
-                "route": cleaned["drugs"][0]["route"],
-                "dosage_form": cleaned["drugs"][0]["dosage_form"],
-                "condition": cleaned["conditions"][0]["name"],
-                "sponsor": cleaned["sponsors"][0]["name"],
-                "sponsor_class": cleaned["sponsors"][0]["class"],
-            }
-        ]
+        table_row = self._project_to_tabular_view(cleaned)
+        expected_table_row = {
+            "trial": "NCT00000102",
+            "drug": "Drug X",
+            "route": "Oral",
+            "dosage_form": "Tablet",
+            "condition": "Condition Y",
+            "sponsor": "Example Pharma Inc",
+            "sponsor_class": "INDUSTRY",
+        }
 
-        expected_table = [
-            {
-                "trial": "NCT00000102",
-                "drug": "Drug X",
-                "route": "Oral",
-                "dosage_form": "Tablet",
-                "condition": "Condition Y",
-                "sponsor": "Example Pharma Inc",
-                "sponsor_class": "INDUSTRY",
-            }
-        ]
-
-        self.assertEqual(table_rows, expected_table)
-        logger.info("Projected tabular view (Neo4j-style):\n%s", json.dumps(table_rows, ensure_ascii=False, indent=2))
+        self.assertEqual(table_row, expected_table_row)
+        self.logger.info("Projected tabular view (Neo4j-style):\n%s", json.dumps([table_row], ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":
