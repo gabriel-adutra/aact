@@ -17,7 +17,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def run_pipeline(limit=1000, batch_size=500):
+def run_etl_pipeline(limit=1000, batch_size=500):
 
     logger.info("Starting ETL Pipeline (AACT -> Neo4j)...")
     
@@ -46,5 +46,4 @@ def run_pipeline(limit=1000, batch_size=500):
 
 
 if __name__ == "__main__":
-    logging.getLogger('src.db.aact_client').setLevel(logging.WARNING)
-    run_pipeline()
+    run_etl_pipeline()
