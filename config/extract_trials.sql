@@ -1,34 +1,70 @@
-SELECT -- Esses 4 campos cumprem os itens listados para rastreabilidade do enunciado.
-    s.nct_id, 
-    s.brief_title, 
-    s.phase, 
-    s.overall_status,
-    -- Agrupamos as intervenções (drogas) em uma lista JSON
-    COALESCE(
-        json_agg(DISTINCT jsonb_build_object('name', i.name, 'description', i.description)) 
-        FILTER (WHERE i.intervention_type IN ('DRUG', 'BIOLOGICAL') AND i.name IS NOT NULL), 
-        '[]'
-    ) as drugs,
-    -- Agrupamos condições
-    COALESCE(
-        json_agg(DISTINCT c.name) 
-        FILTER (WHERE c.name IS NOT NULL), 
-        '[]'
-    ) as conditions,
-    -- Agrupamos patrocinadores
-    COALESCE(
-        json_agg(DISTINCT jsonb_build_object('name', sp.name, 'class', sp.agency_class)) 
-        FILTER (WHERE sp.lead_or_collaborator = 'lead' AND sp.name IS NOT NULL), 
-        '[]'
-    ) as sponsors
-FROM studies s
-LEFT JOIN interventions i ON s.nct_id = i.nct_id
-LEFT JOIN conditions c ON s.nct_id = c.nct_id
-LEFT JOIN sponsors sp ON s.nct_id = sp.nct_id
-WHERE 
-    s.study_type = 'INTERVENTIONAL'
-    -- Filtro de fases normalizado conforme verificação no banco
-    AND s.phase IN ('PHASE1', 'PHASE2', 'PHASE3', 'PHASE4', 'PHASE1/PHASE2', 'PHASE2/PHASE3')
-GROUP BY s.nct_id, s.brief_title, s.phase, s.overall_status
-LIMIT 1000;
+SELECT
+    studies.nct_id,
+    studies.brief_title,
+    studies.phase,
+    studies.overall_status,
 
+    -- Drugs
+    COALESCE(
+        json_agg(
+            DISTINCT jsonb_build_object(
+                'name',        interventions.name,
+                'description', interventions.description
+            )
+        )
+        FILTER (
+            WHERE interventions.intervention_type IN ('DRUG', 'BIOLOGICAL')
+              AND interventions.name IS NOT NULL
+        ),
+        '[]'
+    ) AS drugs,
+
+    -- Conditions
+    COALESCE(
+        json_agg(DISTINCT conditions.name)
+        FILTER (
+            WHERE conditions.name IS NOT NULL
+        ),
+        '[]'
+    ) AS conditions,
+
+    -- Sponsors (lead only)
+    COALESCE(
+        json_agg(
+            DISTINCT jsonb_build_object(
+                'name',  sponsors.name,
+                'class', sponsors.agency_class
+            )
+        )
+        FILTER (
+            WHERE sponsors.lead_or_collaborator = 'lead'
+              AND sponsors.name IS NOT NULL
+        ),
+        '[]'
+    ) AS sponsors
+
+FROM studies
+LEFT JOIN interventions
+       ON studies.nct_id = interventions.nct_id
+LEFT JOIN conditions
+       ON studies.nct_id = conditions.nct_id
+LEFT JOIN sponsors
+       ON studies.nct_id = sponsors.nct_id
+
+WHERE studies.study_type = 'INTERVENTIONAL'
+  AND studies.phase IN (
+      'PHASE1',
+      'PHASE2',
+      'PHASE3',
+      'PHASE4',
+      'PHASE1/PHASE2',
+      'PHASE2/PHASE3'
+  )
+
+GROUP BY
+    studies.nct_id,
+    studies.brief_title,
+    studies.phase,
+    studies.overall_status
+
+LIMIT 1000;
