@@ -2,14 +2,13 @@ import logging
 import sys
 import os
 
-# Ensure src is in path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from src.extract.aact_client import AACTClient
 from src.load.neo4j_client import Neo4jClient
 from src.transform.data_cleaner import DataCleaner, batch_cleaned_trials
 
-# Configure logging
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
