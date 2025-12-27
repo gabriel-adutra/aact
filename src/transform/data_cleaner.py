@@ -1,9 +1,8 @@
-from typing import Dict, Any, List
+from typing import Dict, Any
 from .text_parser import TextParser
 
 class DataCleaner:
     def __init__(self):
-        # Initialize parser once
         self.parser = TextParser()
 
 
@@ -37,8 +36,8 @@ class DataCleaner:
                 continue
 
             name = raw_name.strip().title()
-            desc = drug.get('description') or ""
-            inferred = self.parser.infer_route_and_form(desc)
+            description = drug.get('description') or ""
+            inferred = self.parser.infer_route_and_form(description)
 
             study['drugs'].append({
                 'name': name,

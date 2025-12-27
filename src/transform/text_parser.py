@@ -1,6 +1,6 @@
 import yaml
 import os
-from typing import Dict, List, Any
+from typing import Dict
 
 class TextParser:
     def __init__(self, config_path: str = "config/text_rules.yaml"):
