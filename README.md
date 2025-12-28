@@ -64,8 +64,8 @@ graph TD
 │   ├── test_data_cleaner.py
 │   ├── test_text_parser.py
 │   ├── test_readme_example.py
-│   └── test_bonus_integration.py
-|   scripts
+│   ├── test_bonus_integration.py
+├── scripts
 |   ├── analyzes_entity_extraction_metrics.py
 ├── docs
 │   ├── topDrugs.png
