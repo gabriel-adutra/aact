@@ -32,7 +32,7 @@ def run_etl_pipeline(limit=1000, batch_size=500):
             if clean_batch:
                 neo4j_client.load_trials_batch(clean_batch)
 
-        logger.info(f"Pipeline completed successfully. Next step: open http://localhost:7474, authenticate, and run the queries in queries.cypher to validate the graph.")
+        logger.info("Pipeline completed successfully. Next step: open http://localhost:7474, authenticate, and run the queries in queries.cypher to validate the graph.")
 
     except Exception as e:
         logger.error(f"Pipeline failed: {e}")
