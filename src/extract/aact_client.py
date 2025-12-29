@@ -45,6 +45,7 @@ class AACTClient:
                 logger.info("Trial extraction query started successfully.")
                 
                 total_fetched = 0
+                # Stream results in batches to avoid loading all records into memory
                 while True:
                     rows = cur.fetchmany(size=postgres_fetch_size)
                     if not rows:

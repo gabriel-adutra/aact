@@ -27,7 +27,7 @@ def run_etl_pipeline(limit=1000, batch_size=500):
     neo4j_client.ensure_graph_schema()
 
     try:
-        trials_stream = aact_client.fetch_trials(postgres_fetch_size=100) #just creates a generator of dictionaries. lazy function.
+        trials_stream = aact_client.fetch_trials(postgres_fetch_size=100) #lazy function! Here, just creates a generator.
         for clean_batch in batch_cleaned_trials(trials_stream, data_cleaner, batch_size, limit):
             if clean_batch:
                 neo4j_client.load_trials_batch(clean_batch)
