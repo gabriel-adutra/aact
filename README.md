@@ -263,7 +263,14 @@ RETURN t.nct_id AS trial,
 - Docker + Docker Compose.
 - Create an AACT account to use Postgres credentials (create at https://aact.ctti-clinicaltrials.org/).
 
-Insert your credentials in the AACT_USER and AACT_PASSWORD fields of `.env`:
+## Setup
+1. Clone the repository and navigate to the project directory:
+```bash
+git clone https://github.com/gabriel-adutra/aact_etl.git
+cd aact_etl
+```
+
+2. Insert your credentials in the AACT_USER and AACT_PASSWORD fields of `.env`:
 ```
 AACT_HOST=aact-db.ctti-clinicaltrials.org
 AACT_PORT=5432
