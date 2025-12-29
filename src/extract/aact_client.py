@@ -51,11 +51,11 @@ class AACTClient:
                     if not rows:
                         break
 
+                    total_fetched += len(rows)
+                    logger.info(f"Extracted {total_fetched} trials from AACT database so far.")
+
                     for row in rows:
                         yield dict(row)
-                        
-                    total_fetched += len(rows)
-                    logger.info(f"Fetched {total_fetched} trials so far.")
                     
         except Exception as e:
             logger.error(f"Error during query execution: {e}")

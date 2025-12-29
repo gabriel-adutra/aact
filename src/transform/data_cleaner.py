@@ -1,5 +1,8 @@
 from typing import Dict, Any
+import logging
 from .text_parser import TextParser
+
+logger = logging.getLogger(__name__)
 
 class DataCleaner:
     def __init__(self):
@@ -84,8 +87,10 @@ def batch_cleaned_trials(trials_stream, data_cleaner: DataCleaner, batch_size: i
         batch.append(clean_trial)
 
         if len(batch) >= batch_size:
+            logger.info(f"Processed and cleaned {processed} trials so far. Ready to load batch of {len(batch)} trials.")
             yield batch
             batch = []
 
     if batch:
+        logger.info(f"Processed and cleaned {processed} trials total. Ready to load final batch of {len(batch)} trials.")
         yield batch
